@@ -8,6 +8,8 @@
 #include <deque>
 #include <crypto++/cryptlib.h>
 #include <crypto++/sha.h>
+#include "bloomfilter.h"
+#include "config.h"
 
 namespace merkletree {
 
@@ -44,16 +46,18 @@ struct SHA256Hash {
 
 static_assert(sizeof(SHA256Hash) == sha256_size);
 
-template< typename T, typename Hash = SHA256Hash >
+template< typename T = std::string, size_t bloom_filter_bits = 10000, typename Hash = SHA256Hash >
 class MerkleTree {
  public:
-  MerkleTree() : root_(nullptr), nr_leaf_(0), level_(0) {}
+  MerkleTree() : root_(nullptr), nr_leaf_(0), byte_use_(0), level_(0) {}
   MerkleTree(const std::vector<T*>& data) { BuildFromVector(data); }
 
   void BuildFromVector(const std::vector<T*>& data) {
+    byte_use_ = 0;
     std::deque<Node*> nodes;
     for (auto d : data)
       nodes.emplace_back(new Node(d));
+    byte_use_ += nodes.size() * sizeof(Node);
     nr_leaf_ = nodes.size();
     level_ = 1;
     while (nodes.size() != 1) {
@@ -66,45 +70,60 @@ class MerkleTree {
   bool Verify() const { return Verify_(root_); }
   size_t LeafSize() const { return nr_leaf_; }
   int Level() const { return level_; }
+  size_t ByteUse() const { return byte_use_; }
+
+  bool Exist(T* data) const {
+    Hash data_hash(data);
+    return Exist_(root_, data_hash, data);
+  }
+
+#ifdef BLOOM
+  double BloomFillRate() const { return root_->filter.FillRate(); }
+#endif
 
  private:
   struct Node {
-    Node*  parent;
     Node*  left;    // nullptr if is leaf
     union {
       Node*  right;
       T*     data;
     };
     Hash hash;
+#ifdef BLOOM
+    BloomFilter<T, bloom_filter_bits> filter;
+#endif
 
-    Node(T* d) : parent(nullptr), left(nullptr), data(d), hash(data) {}
-
-    Node(Node* l) : parent(nullptr), left(l), right(nullptr), hash(l->hash) {
-      l->parent = this;
+    Node(T* d) : left(nullptr), data(d), hash(data) {
+#ifdef BLOOM
+      filter.Add(d);
+#endif
     }
-
-    Node(Node* l, Node* r) : parent(nullptr), left(l), right(r), hash(l->hash, r->hash) {
-      l->parent = this;
-      r->parent = this;
-    }
+    Node(Node* l) : left(l), right(nullptr), hash(l->hash)
+#ifdef BLOOM
+      , filter(l->filter)
+#endif
+      {}
+    Node(Node* l, Node* r) :left(l), right(r), hash(l->hash, r->hash)
+#ifdef BLOOM
+      , filter(l->filter, r->filter)
+#endif
+      {}
 
     bool IsLeaf() const { return left == nullptr; }
     T* Data() const { return (T*)data; }
 
     bool Verify() const {
-      if (IsLeaf())
-        return hash == Hash(data);
-      else
-        return hash == Hash(left->hash, right->hash);
+      return IsLeaf() ? hash == Hash(data) : hash == Hash(left->hash, right->hash);
     }
   };
 
-  Node*     root_;
-  size_t    nr_leaf_;
-  int       level_;
+  Node*  root_;
+  size_t nr_leaf_;
+  size_t byte_use_;
+  int    level_;
 
   size_t BuildUpperLevel_(std::deque<Node*>& nodes) {
-    bool is_odd = nodes.size() % 2;
+    int is_odd = nodes.size() % 2;
     size_t even_size = is_odd ? (nodes.size()-1) : nodes.size();
     for (size_t i = 0; i < even_size; i += 2) {
       Node* left = nodes.front();
@@ -117,7 +136,21 @@ class MerkleTree {
       nodes.push_back(new Node(nodes.front()));
       nodes.pop_front();
     }
+    byte_use_ += (even_size/2 + is_odd) * sizeof(Node);
     return nodes.size();
+  }
+
+  bool Exist_(Node* node, Hash& target_hash, T* data) const {
+    if (node == nullptr)
+      return false;
+#ifdef BLOOM
+    if (!node->filter.MaybeExist(data))
+      return false;
+#endif
+    if (node->IsLeaf())
+      return (node->hash == target_hash) && (*data == *node->data);
+    else
+      return Exist_(node->left, target_hash, data) || Exist_(node->right, target_hash, data);
   }
 
   bool Verify_(Node* node) const {

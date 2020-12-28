@@ -1,3 +1,10 @@
 build/
 .vscode/
 a.out
+doc/*
+!doc/report.tex
+!doc/mydoc.cls
+!doc/report.pdf
+!doc/figure
+!doc/*.txt
+!doc/*.gnu
