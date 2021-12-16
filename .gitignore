@@ -1,6 +1,7 @@
 build/
 .vscode/
 a.out
+include/config.h
 doc/*
 !doc/report.tex
 !doc/mydoc.cls

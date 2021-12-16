@@ -6,10 +6,12 @@
 #include <memory>
 #include <vector>
 #include <deque>
-#include <crypto++/cryptlib.h>
-#include <crypto++/sha.h>
+#include <cryptopp/cryptlib.h>
+#include <cryptopp/sha.h>
 #include "bloomfilter.h"
 #include "config.h"
+
+using namespace CryptoPP;
 
 namespace merkletree {
 
@@ -20,13 +22,13 @@ struct SHA256Hash {
   byte hash_val[sha256_size];
 
   SHA256Hash(const std::string& data) {
-    CryptoPP::SHA256 hash;
+    SHA256 hash;
     hash.Update((const byte*)data.data(), data.size());
     hash.Final(hash_val);
   }
 
   SHA256Hash(std::string* data) {
-    CryptoPP::SHA256 hash;
+    SHA256 hash;
     hash.Update((const byte*)data->data(), data->size());
     hash.Final(hash_val);
   }

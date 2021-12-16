@@ -13,10 +13,10 @@ configure_file(
 include_directories(include)
 
 add_executable(benchmark tests/benchmark.cc)
-target_link_libraries(benchmark crypto++)
+target_link_libraries(benchmark cryptopp)
 
 add_executable(bloom_filter_test tests/bloom_filter_test.cc)
-target_link_libraries(bloom_filter_test crypto++)
+target_link_libraries(bloom_filter_test cryptopp)
 
 add_executable(build_merkletree tests/build_merkletree.cc)
-target_link_libraries(build_merkletree crypto++)
+target_link_libraries(build_merkletree cryptopp)
